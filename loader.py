@@ -9,7 +9,7 @@ import os
 from .ops import GGMLTensor
 from .dequant import is_quantized, dequantize_tensor
 
-IMG_ARCH_LIST = {"flux", "sd1", "sdxl", "sd3", "aura", "hidream", "cosmos", "ltxv", "hyvid", "wan", "lumina2", "qwen_image"}
+IMG_ARCH_LIST = {"flux", "sd1", "sdxl", "sd3", "aura", "hidream", "cosmos", "ltxv", "hyvid", "wan", "lumina2", "qwen_image", "ideogram"}
 TXT_ARCH_LIST = {"t5", "t5encoder", "llama", "qwen2vl", "qwen3", "qwen3vl", "gemma3"}
 VIS_TYPE_LIST = {"clip-vision", "mmproj"}
 
@@ -138,9 +138,10 @@ def gguf_sd_loader(path, handle_prefix="model.diffusion_model.", is_text_model=F
             torch_tensor = torch_tensor.view(*shape)
         state_dict[sd_key] = GGMLTensor(torch_tensor, tensor_type=tensor.tensor_type, tensor_shape=shape)
 
-        # 1D tensors shouldn't be quantized, this is a fix for BF16
-        if len(shape) <= 1 and tensor.tensor_type == gguf.GGMLQuantizationType.BF16:
-            state_dict[sd_key] = dequantize_tensor(state_dict[sd_key], dtype=torch.float32)
+        # BF16 GGUF tensors are full-precision storage, not compressed quants.
+        if tensor.tensor_type == gguf.GGMLQuantizationType.BF16:
+            dtype = torch.float32 if len(shape) <= 1 else torch.bfloat16
+            state_dict[sd_key] = dequantize_tensor(state_dict[sd_key], dtype=dtype)
 
         # keep track of loaded tensor types
         tensor_type_str = getattr(tensor.tensor_type, "name", repr(tensor.tensor_type))
@@ -501,6 +502,16 @@ def gguf_clip_loader(path):
         if arch == "qwen2vl":
             vsd = gguf_mmproj_loader(path)
             sd.update(vsd)
+    elif arch == "ideogram":
+        # Dequantize Ideogram model for inference
+        logging.info("Dequantizing Ideogram model for inference...")
+        dequantized_count = 0
+        for key in list(sd.keys()):
+            if is_quantized(sd[key]):
+                # Dequantize to BF16 to save VRAM while maintaining quality
+                sd[key] = dequantize_tensor(sd[key], dtype=torch.bfloat16)
+                dequantized_count += 1
+        logging.info(f"Dequantized {dequantized_count} tensors for Ideogram model")
     else:
         pass
     return sd
