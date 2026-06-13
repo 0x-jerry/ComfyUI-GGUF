@@ -1,7 +1,3 @@
-
-> [!IMPORTANT]
-> To test this fork, use `git clone https://github.com/molbal/ComfyUI-GGUF` and not the original repo, until it is merged (or support is added through another PR)
-
 # ComfyUI-GGUF
 GGUF Quantization support for native ComfyUI models
 
